@@ -1,54 +1,115 @@
-const courseGraph: { [key: string]: Course } = {
-  CS116: {
-    id: 'CS116',
-    position: { x: 100, y: 50 },
-    prerequisites: [],
-  },
-  CS117: {
-    id: 'CS117',
-    position: { x: 100, y: 150 },
-    prerequisites: ['CS116'],
-  },
-  CS263: {
-    id: 'CS263',
-    position: { x: 100, y: 250 },
-    prerequisites: ['CS117'],
-  },
-}
-
-export default function App() {
-  return (
-    <div className="h-screen w-screen">
-      {Object.entries(courseGraph).map(([key, course]) => {
-        return (
-          <CourseNode key={key} id={course.id} position={course.position} />
-        )
-      })}
-
-      <svg className="h-full w-full">
-        {Object.entries(courseGraph).map(([key, course]) => {
-          if (course.prerequisites.length === 0) return null
-
-          return course.prerequisites.map((preReqId) => {
-            const prereqCourse = courseGraph[preReqId]
-            return (
-              <CourseEdge
-                key={`${key}-${preReqId}`}
-                sourcePosition={prereqCourse.position}
-                targetPosition={course.position}
-              />
-            )
-          })
-        })}
-      </svg>
-    </div>
-  )
-}
+import * as d3 from 'd3'
+import { useEffect, useState } from 'react'
 
 type Course = {
   id: string
-  position: { x: number; y: number }
-  prerequisites: string[]
+  name: string
+} & d3.SimulationNodeDatum
+
+const courses: { [key: string]: Course } = {
+  CS116: {
+    id: 'CS116',
+    name: 'Computing Fundamentals',
+  },
+  CS117: {
+    id: 'CS117',
+    name: 'Object-Oriented Programming',
+  },
+  CS263: {
+    id: 'CS263',
+    name: 'Database Management Systems',
+  },
+  CS11: {
+    id: 'CS11',
+    name: 'Database Management Systems',
+  },
+}
+
+type Edge = {
+  source: string
+  target: string
+}
+
+const edges: Edge[] = [
+  { source: 'CS116', target: 'CS117' },
+  { source: 'CS117', target: 'CS263' }
+]
+
+export default function App() {
+  return <Graph nodes={Object.values(courses)} edges={edges} />
+}
+
+type GraphProps = {
+  nodes: Course[]
+  edges: Edge[]
+}
+
+function Graph({ nodes, edges }: GraphProps) {
+  const [nodePositions, setNodePositions] = useState<Course[] | null>(null)
+  const { innerWidth, innerHeight } = window
+
+  useEffect(() => {
+    const simulation = d3
+      .forceSimulation(nodes)
+      .force(
+        'link',
+        d3
+          .forceLink(
+            edges.map((e) => ({
+              source: nodes.find((n) => n.id === e.source)!,
+              target: nodes.find((n) => n.id === e.target)!,
+            }))
+          )
+          .id((d) => (d as Course).id)
+          .distance(150)
+      )
+      .force('charge', d3.forceManyBody().strength(-300))
+      .force('center', d3.forceCenter(innerWidth / 2, innerHeight / 2))
+      .stop()
+
+    const numIterations = Math.ceil(
+      Math.log(simulation.alphaMin()) / Math.log(1 - simulation.alphaDecay())
+    )
+
+    simulation.tick(numIterations)
+
+    setNodePositions(nodes)
+  }, [nodes, edges, innerHeight, innerWidth])
+
+  if (!nodePositions)
+    return <div className="w-screen h-screen">Loading graph...</div>
+
+  return (
+    <div className="w-screen h-screen">
+      <svg
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${innerWidth} ${innerHeight}`}
+      >
+        {edges.map((e) => {
+          const source = nodePositions.find((n) => n.id === e.source)
+          const target = nodePositions.find((n) => n.id === e.target)
+
+          if (!source?.x || !source?.y || !target?.x || !target?.y) return null
+
+          return (
+            <CourseEdge
+              key={`${e.source}-${e.target}`}
+              sourcePosition={{ x: source.x, y: source.y }}
+              targetPosition={{ x: target.x, y: target.y }}
+            />
+          )
+        })}
+      </svg>
+
+      {nodePositions.map((np) => {
+        if (!np.x || !np.y) return null
+        return (
+          <CourseNode key={np.id} id={np.id} position={{ x: np.x, y: np.y }} />
+        )
+      })}
+    </div>
+  )
 }
 
 type CourseNodeProps = {
